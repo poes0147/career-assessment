@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>직업 종합검사 (RIASEC 90문항) - 클라이언트 전용</title>
+  <style>
+    :root{--gap:12px;--primary:#1f6feb;--muted:#f6f8fa;--text:#0b1021}
+    *{box-sizing:border-box} body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;margin:0;color:var(--text);background:#fff}
+    header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;z-index:10}
+    .wrap{max-width:960px;margin:0 auto;padding:16px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;box-shadow:0 4px 16px rgba(0,0,0,.04)}
+    .row{display:flex;gap:var(--gap);flex-wrap:wrap}
+    .col{flex:1 1 320px}
+    .btn{appearance:none;border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:10px 14px;cursor:pointer}
+    .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .btn.ghost{background:#fff}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .scale{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+    .pill{border:1px solid #d1d5db;border-radius:999px;padding:8px 10px;cursor:pointer}
+    .pill.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .q{margin:10px 0}
+    .progress{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden}
+    .progress>span{display:block;height:100%;background:var(--primary);width:0}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1d4ed8;border:1px solid #c7d2fe}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 10px;border-bottom:1px solid #f0f2f4;text-align:left}
+    .sticky-footer{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb}
+    .hint{color:#6b7280;font-size:.9rem}
+    .hidden{display:none}
+    .chart-wrap{padding:16px;border:1px dashed #e5e7eb;border-radius:12px}
+    .small{font-size:.9rem}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;border:1px solid #e5e7eb;border-bottom-width:2px;border-radius:6px;padding:0 6px}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="wrap row" style="align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="badge">무료/클라이언트 전용</span>
+        <h1 style="margin:8px 0;font-size:1.25rem">직업 종합검사 (RIASEC)</h1>
+      </div>
+      <div class="hint">데이터는 브라우저에만 저장됩니다(LocalStorage).</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="intro" class="card">
+      <h2>개요</h2>
+      <p>이 도구는 <b>브라우저에서만 동작</b>하는 클라이언트 단일 파일 앱입니다. 서버/유료키 없이 <span class="badge">100% 무료</span>로 사용 가능합니다.</p>
+      <ul>
+        <li>구성: 흥미·능력 각 30(5점 척도), 직업군 선호 30(15페어×2 회차, 이항)</li>
+        <li>섹션 내 문항 <b>랜덤화</b>, 진행률 표시</li>
+        <li>RIASEC 섹션별/합산 점수 및 차트</li>
+        <li>결과 <b>JSON 내보내기</b> / <b>불러오기</b></li>
+      </ul>
+      <div class="row">
+        <div class="col">
+          <label class="small">시스템 프롬프트(선택): 결과 해석에 쓸 요약 규칙</label>
+          <textarea id="sysPrompt" rows="4" style="width:100%" placeholder="예) 상위 2개 유형을 중심으로 강점/환경/권장직무를 5줄 이내로 요약"></textarea>
+        </div>
+        <div class="col">
+          <label class="small">문항셋 선택</label>
+          <select id="bankSelect" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px">
+            <option value="full">풀셋(90문항: 제공 문항 반영)</option>
+            <option value="demo">데모 18문항(각 6)</option>
+          </select>
+          <p class="hint">풀셋은 이미 제공하신 90문항이 반영되어 있습니다.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn primary" id="startBtn">검사 시작</button>
+        <button class="btn ghost" id="loadBtn">불러오기(JSON)</button>
+        <input type="file" id="fileInput" accept="application/json" class="hidden"/>
+      </div>
+    </section>
+
+    <section id="exam" class="card hidden">
+      <div class="row" style="align-items:center;justify-content:space-between">
+        <h2 id="secTitle">섹션</h2>
+        <div style="min-width:280px">
+          <div class="progress"><span id="progressBar"></span></div>
+          <div class="small hint" id="progressText" style="margin-top:6px">0%</div>
+        </div>
+      </div>
+      <div id="questionList"></div>
+      <div class="sticky-footer wrap" style="display:flex;gap:10px;justify-content:flex-end;padding:12px 0">
+        <button class="btn ghost" id="prevBtn">이전 섹션</button>
+        <button class="btn primary" id="nextBtn">다음 섹션</button>
+      </div>
+    </section>
+
+    <section id="result" class="card hidden">
+      <h2>결과</h2>
+      <div class="row">
+        <div class="col">
+          <div class="chart-wrap"><canvas id="chart"></canvas></div>
+        </div>
+        <div class="col">
+          <table id="scoreTable"></table>
+          <div style="margin-top:10px" class="hint small">합산 = (흥미 + 능력 + 선호) 점수의 합. 섹션별 가중치는 설정에서 조정 가능.</div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <h3>자동 요약</h3>
+        <div id="summaryBox" class="card" style="padding:12px"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn ghost" id="retryBtn">다시 검사</button>
+        <button class="btn" id="exportBtn">결과 저장(JSON)</button>
+        <button class="btn" id="printBtn">인쇄/저장(PDF)</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // ====== 1) 문항 뱅크 ======
+    const questionBanks = {
+      // 데모(기존)
+      demo: [
+        {section:'Interest', type:'R', text:'도구를 사용해 간단한 물건을 수리하는 것을 좋아한다.'},
+        {section:'Interest', type:'I', text:'새로운 지식의 원리를 탐구하는 것을 즐긴다.'},
+        {section:'Interest', type:'A', text:'그림을 그리거나 디자인을 구상하는 걸 좋아한다.'},
+        {section:'Interest', type:'S', text:'타인의 고민 상담을 돕는 일을 선호한다.'},
+        {section:'Interest', type:'E', text:'팀을 이끌고 목표를 달성하는 데 흥미가 있다.'},
+        {section:'Interest', type:'C', text:'정확한 기록과 문서 정리를 좋아한다.'},
+        {section:'Ability', type:'R', text:'간단한 조립·설치를 스스로 수행할 수 있다.'},
+        {section:'Ability', type:'I', text:'데이터에서 패턴을 찾아 설명할 수 있다.'},
+        {section:'Ability', type:'A', text:'새로운 아이디어를 시각물로 표현할 수 있다.'},
+        {section:'Ability', type:'S', text:'상대의 감정을 파악하고 공감 의사소통을 할 수 있다.'},
+        {section:'Ability', type:'E', text:'의사결정을 빠르게 내리고 주변을 설득할 수 있다.'},
+        {section:'Ability', type:'C', text:'숫자/일정/파일을 체계적으로 관리할 수 있다.'},
+        {section:'Preference', type:'R', text:'현장에서 몸을 움직이는 활동을 선호한다.'},
+        {section:'Preference', type:'I', text:'복잡한 문제를 깊이 파고드는 일을 선호한다.'},
+        {section:'Preference', type:'A', text:'자유로운 방식으로 일하는 환경을 원한다.'},
+        {section:'Preference', type:'S', text:'사람들과 협력하는 일을 선호한다.'},
+        {section:'Preference', type:'E', text:'성과 중심의 보상과 경쟁을 선호한다.'},
+        {section:'Preference', type:'C', text:'규정/절차가 명확한 환경을 선호한다.'},
+      ],
+      // 풀셋(제공하신 90문항 반영)
+      full_interest: [
+        // R(1~5)
+        {section:'Interest', type:'R', text:'기계나 도구를 직접 다루는 일이 재미있다.'},
+        {section:'Interest', type:'R', text:'야외에서 몸을 쓰는 활동이 좋다.'},
+        {section:'Interest', type:'R', text:'복잡한 장비의 작동 원리를 이해하는 것이 즐겁다.'},
+        {section:'Interest', type:'R', text:'집안 가전제품이 고장 나면 직접 고쳐보고 싶다.'},
+        {section:'Interest', type:'R', text:'공장이나 작업현장 분위기가 흥미롭다.'},
+        // I(6~10)
+        {section:'Interest', type:'I', text:'새로운 지식이나 원리를 탐구하는 것이 즐겁다.'},
+        {section:'Interest', type:'I', text:'문제의 원인을 분석하고 해결책을 찾는 것을 좋아한다.'},
+        {section:'Interest', type:'I', text:'실험이나 조사 활동이 흥미롭다.'},
+        {section:'Interest', type:'I', text:'데이터를 수집하고 패턴을 찾는 일이 재미있다.'},
+        {section:'Interest', type:'I', text:'논리적으로 사고하는 것을 선호한다.'},
+        // A(11~15)
+        {section:'Interest', type:'A', text:'창의적으로 무언가를 표현하는 것이 좋다.'},
+        {section:'Interest', type:'A', text:'그림, 음악, 글쓰기 등 예술 활동을 즐긴다.'},
+        {section:'Interest', type:'A', text:'정해진 규칙보다 자유로운 방식으로 일하는 게 좋다.'},
+        {section:'Interest', type:'A', text:'시각적으로 아름다운 것을 만드는 것을 좋아한다.'},
+        {section:'Interest', type:'A', text:'새로운 아이디어를 떠올리는 게 즐겁다.'},
+        // S(16~20)
+        {section:'Interest', type:'S', text:'다른 사람을 돕는 일이 보람 있다.'},
+        {section:'Interest', type:'S', text:'사람들의 고민을 들어주고 조언하는 것이 좋다.'},
+        {section:'Interest', type:'S', text:'교육이나 지도 활동이 흥미롭다.'},
+        {section:'Interest', type:'S', text:'협력하며 일하는 것을 선호한다.'},
+        {section:'Interest', type:'S', text:'타인의 성장과 변화를 지원하는 일을 좋아한다.'},
+        // E(21~25)
+        {section:'Interest', type:'E', text:'목표를 세우고 달성하는 것이 즐겁다.'},
+        {section:'Interest', type:'E', text:'다른 사람을 설득하는 데 자신 있다.'},
+        {section:'Interest', type:'E', text:'새로운 사업이나 프로젝트를 기획하고 싶다.'},
+        {section:'Interest', type:'E', text:'리더 역할을 맡는 것이 좋다.'},
+        {section:'Interest', type:'E', text:'경쟁적인 환경에서 성과를 내는 것을 즐긴다.'},
+        // C(26~30)
+        {section:'Interest', type:'C', text:'체계적으로 정리하고 기록하는 것을 좋아한다.'},
+        {section:'Interest', type:'C', text:'규칙과 절차에 맞춰 일하는 것이 편하다.'},
+        {section:'Interest', type:'C', text:'숫자와 자료를 정확하게 다루는 데 흥미가 있다.'},
+        {section:'Interest', type:'C', text:'문서나 데이터를 꼼꼼히 관리하는 것이 좋다.'},
+        {section:'Interest', type:'C', text:'안정적이고 예측 가능한 업무 환경을 선호한다.'},
+      ],
+      full_ability: [
+        // R(31~35)
+        {section:'Ability', type:'R', text:'공구나 기계를 능숙하게 다룰 수 있다.'},
+        {section:'Ability', type:'R', text:'간단한 수리나 설치 작업을 잘한다.'},
+        {section:'Ability', type:'R', text:'손으로 하는 세밀한 작업이 능숙하다.'},
+        {section:'Ability', type:'R', text:'기계의 고장 원인을 파악할 수 있다.'},
+        {section:'Ability', type:'R', text:'설비나 장비 조작법을 쉽게 익힌다.'},
+        // I(36~40)
+        {section:'Ability', type:'I', text:'복잡한 문제를 논리적으로 해결할 수 있다.'},
+        {section:'Ability', type:'I', text:'데이터를 분석하고 결론을 도출하는 데 능숙하다.'},
+        {section:'Ability', type:'I', text:'새로운 정보를 빨리 이해하고 적용한다.'},
+        {section:'Ability', type:'I', text:'과학적 방법으로 문제를 해결할 수 있다.'},
+        {section:'Ability', type:'I', text:'수학적·논리적 계산이 능하다.'},
+        // A(41~45)
+        {section:'Ability', type:'A', text:'시각적으로 매력적인 디자인을 만들 수 있다.'},
+        {section:'Ability', type:'A', text:'창작 아이디어를 구체적으로 구현할 수 있다.'},
+        {section:'Ability', type:'A', text:'음악·미술·문학 등 한 분야 이상에서 실력을 갖췄다.'},
+        {section:'Ability', type:'A', text:'감각적인 색·형태·소리를 잘 조합한다.'},
+        {section:'Ability', type:'A', text:'창의적인 표현 방식을 다양하게 시도할 수 있다.'},
+        // S(46~50)
+        {section:'Ability', type:'S', text:'다른 사람의 기분과 상황을 잘 파악한다.'},
+        {section:'Ability', type:'S', text:'교육·훈련을 효과적으로 진행할 수 있다.'},
+        {section:'Ability', type:'S', text:'갈등 상황을 조정하고 해결할 수 있다.'},
+        {section:'Ability', type:'S', text:'사람들에게 동기를 부여할 수 있다.'},
+        {section:'Ability', type:'S', text:'상대방의 요구에 맞춰 도움을 줄 수 있다.'},
+        // E(51~55)
+        {section:'Ability', type:'E', text:'사람들 앞에서 자신 있게 발표할 수 있다.'},
+        {section:'Ability', type:'E', text:'협상을 통해 유리한 조건을 이끌어낼 수 있다.'},
+        {section:'Ability', type:'E', text:'프로젝트 계획을 세우고 실행에 옮길 수 있다.'},
+        {section:'Ability', type:'E', text:'위기 상황에서 빠르게 결정을 내린다.'},
+        {section:'Ability', type:'E', text:'팀을 이끌어 성과를 내는 데 능숙하다.'},
+        // C(56~60)
+        {section:'Ability', type:'C', text:'자료를 빠르고 정확하게 입력할 수 있다.'},
+        {section:'Ability', type:'C', text:'규칙에 맞춰 업무를 처리하는 데 능하다.'},
+        {section:'Ability', type:'C', text:'복잡한 일정과 업무를 체계적으로 관리한다.'},
+        {section:'Ability', type:'C', text:'계산 실수가 거의 없다.'},
+        {section:'Ability', type:'C', text:'문서나 파일을 깔끔하게 정리·보관할 수 있다.'},
+      ],
+      full_preference_pairs: [
+        {opt1:{type:'R', label:'기계·설비 유지보수', jobs:'기계정비원, 전기전자설비원, 자동화설비 기술자'}, opt2:{type:'I', label:'자연과학 연구', jobs:'생명과학자, 물리학자, 화학연구원'}},
+        {opt1:{type:'A', label:'디자인', jobs:'시각/패션/제품 디자이너'}, opt2:{type:'C', label:'사무·행정', jobs:'사무원, 문서관리원, 총무사무원'}},
+        {opt1:{type:'S', label:'교육', jobs:'초등교사, 직업훈련교사, 외국어강사'}, opt2:{type:'E', label:'영업·판매', jobs:'영업사원, 판매원, 해외영업원'}},
+        {opt1:{type:'R', label:'건설·시공', jobs:'건축시공기술자, 토목기사, 인테리어시공원'}, opt2:{type:'A', label:'콘텐츠·미디어', jobs:'영상편집자, PD, 콘텐츠기획자'}},
+        {opt1:{type:'I', label:'의료·보건 연구', jobs:'의학연구원, 임상병리연구원, 보건학연구원'}, opt2:{type:'E', label:'경영·기획', jobs:'전략/사업기획, 경영컨설턴트'}},
+        {opt1:{type:'R', label:'운동·체육', jobs:'운동선수, 트레이너, 스포츠지도사'}, opt2:{type:'C', label:'회계·재무', jobs:'회계사, 재무분석가, 세무사'}},
+        {opt1:{type:'A', label:'출판·창작', jobs:'작가, 편집자, 번역가'}, opt2:{type:'S', label:'의료서비스', jobs:'간호사, 물리치료사, 치위생사'}},
+        {opt1:{type:'I', label:'데이터·AI 분석', jobs:'데이터사이언티스트, AI엔지니어, 통계분석가'}, opt2:{type:'C', label:'법률·행정지원', jobs:'법무/행정 사무원, 공무원'}},
+        {opt1:{type:'R', label:'생산·품질관리', jobs:'품질관리원, 생산기술자, 공정관리자'}, opt2:{type:'E', label:'브랜드·홍보', jobs:'브랜드매니저, 홍보전문가, PR매니저'}},
+        {opt1:{type:'S', label:'상담', jobs:'심리/청소년/직업 상담사'}, opt2:{type:'I', label:'공학·기술개발', jobs:'기계설계, 전자회로, 로봇공학'}},
+        {opt1:{type:'R', label:'운전·물류', jobs:'화물/지게차 운전원, 물류관리'}, opt2:{type:'I', label:'데이터·AI 분석', jobs:'데이터사이언티스트, AI엔지니어, 통계분석가'}},
+        {opt1:{type:'R', label:'생산·품질관리', jobs:'품질관리원, 생산기술자, 공정관리자'}, opt2:{type:'S', label:'교육', jobs:'초등교사, 직업훈련교사, 외국어강사'}},
+        {opt1:{type:'R', label:'운동·체육', jobs:'운동선수, 트레이너, 스포츠지도사'}, opt2:{type:'S', label:'의료서비스', jobs:'간호사, 물리치료사, 치위생사'}},
+        {opt1:{type:'I', label:'공학·기술개발', jobs:'기계설계, 전자회로, 로봇공학'}, opt2:{type:'A', label:'디자인', jobs:'시각/패션/제품 디자이너'}},
+        {opt1:{type:'I', label:'의료·보건 연구', jobs:'의학연구원, 임상병리연구원, 보건학연구원'}, opt2:{type:'C', label:'회계·재무', jobs:'회계사, 재무분석가, 세무사'}},
+      ]
+    };
+
+    // ====== 2) 상태 ======
+    const state = {
+      bankKey: 'full',
+      sections: ['Interest','Ability','Preference'],
+      sectionIndex: 0,
+      answers: {}, // key: qid -> Likert(1..5) 또는 {choice:'opt1|opt2', type:'R|I|A|S|E|C'}
+      weights: { Interest:1, Ability:1, Preference:1 },
+      sysPrompt:''
+    };
+
+    // ====== 3) 유틸 ======
+    const shuffle = arr => arr.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(v=>v[1]);
+    const bySection = (bank, sec) => bank.filter(q=>q.section===sec);
+    const progress = () => {
+      const bank = getBank();
+      const totalInSec = bySection(bank, state.sections[state.sectionIndex]).length;
+      const answered = bySection(bank, state.sections[state.sectionIndex]).filter(q=>state.answers[q._id]).length;
+      const pct = Math.round((answered/totalInSec)*100)||0;
+      document.getElementById('progressBar').style.width = pct+'%';
+      document.getElementById('progressText').textContent = `${answered}/${totalInSec} • ${pct}%`;
+    };
+    const uid = ()=>'q_'+Math.random().toString(36).slice(2,9);
+
+    function getBank(){
+      if(state.bankKey==='full'){
+        if(!state._prepared){ state._prepared = {}; }
+        // Interest/Ability 준비
+        ['Interest','Ability'].forEach(sec=>{
+          if(!state._prepared[sec]){
+            const base = (sec==='Interest'? questionBanks.full_interest: questionBanks.full_ability)
+              .map(q=>({_id:uid(), ...q}));
+            state._prepared[sec] = shuffle(base);
+          }
+        });
+        // Preference: 15 페어 × 2회 = 30문항 (좌우 랜덤)
+        if(!state._prepared.Preference){
+          const pairs = questionBanks.full_preference_pairs;
+          const twice = [...pairs, ...pairs].map(p=>{
+            const swap = Math.random()<0.5;
+            const opt1 = swap ? p.opt2 : p.opt1;
+            const opt2 = swap ? p.opt1 : p.opt2;
+            return {_id:uid(), section:'Preference', mode:'pair', opt1, opt2, text:`다음 중 더 끌리는 것은?`};
+          });
+          state._prepared.Preference = shuffle(twice);
+        }
+        return [...state._prepared.Interest, ...state._prepared.Ability, ...state._prepared.Preference];
+      }
+      // demo
+      const raw = questionBanks[state.bankKey].map(q=>({...q}));
+      if(!state._prepared){ state._prepared = {}; }
+      state.sections.forEach(sec=>{
+        if(!state._prepared[sec]){
+          const secItems = raw.filter(q=>q.section===sec).map(q=>({_id:uid(),...q}));
+          state._prepared[sec] = shuffle(secItems);
+        }
+      });
+      return [...state._prepared.Interest, ...state._prepared.Ability, ...state._prepared.Preference];
+    }
+
+    // ====== 4) 렌더 ======
+    function renderSection(){
+      const sec = state.sections[state.sectionIndex];
+      document.getElementById('secTitle').textContent = `${sec} 섹션 (${state.sectionIndex+1}/${state.sections.length})`;
+
+      const holder = document.getElementById('questionList');
+      holder.innerHTML = '';
+      const items = bySection(getBank(), sec);
+
+      items.forEach((q,idx)=>{
+        const div = document.createElement('div');
+        div.className='q';
+        if(q.mode==='pair'){
+          div.innerHTML = `
+            <div><b>${idx+1}.</b> ${q.text}</div>
+            <div class="row" data-id="${q._id}" style="gap:10px;margin-top:6px">
+              <button class="pill" data-choice="opt1">${q.opt1.label} <span class='hint small'>(${q.opt1.jobs})</span></button>
+              <button class="pill" data-choice="opt2">${q.opt2.label} <span class='hint small'>(${q.opt2.jobs})</span></button>
+            </div>`;
+        }else{
+          div.innerHTML = `
+            <div><b>${idx+1}.</b> ${q.text} <span class="hint small">(${q.type})</span></div>
+            <div class="scale" data-id="${q._id}">
+              ${[1,2,3,4,5].map(v=>`<button class="pill" data-v="${v}">${v}</button>`).join('')}
+              <span class="hint small">1 전혀 아니다 · 5 매우 그렇다</span>
+            </div>`;
+        }
+        holder.appendChild(div);
+      });
+
+      // 바인딩: Likert
+      holder.querySelectorAll('.scale .pill').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+          const pid = e.target.closest('.scale').dataset.id;
+          const v = Number(e.target.dataset.v);
+          state.answers[pid] = v;
+          e.target.closest('.scale').querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+          e.target.classList.add('active');
+          progress();
+          saveLocal();
+        });
+      });
+      // 바인딩: Pair
+      holder.querySelectorAll('.row .pill[data-choice]').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+          const row = e.target.closest('.row');
+          const pid = row.dataset.id;
+          const choice = e.target.dataset.choice; // opt1 | opt2
+          const q = items.find(x=>x._id===pid);
+          const chosenType = q[choice].type; // R/I/A/S/E/C
+          state.answers[pid] = {choice, type: chosenType};
+          row.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+          e.target.classList.add('active');
+          progress();
+          saveLocal();
+        });
+      });
+
+      // 기존 답 반영
+      items.forEach(q=>{
+        const v = state.answers[q._id];
+        if(!v) return;
+        if(q.mode==='pair'){
+          const row = holder.querySelector(`.row[data-id="${q._id}"]`);
+          const btn = row?.querySelector(`.pill[data-choice="${v.choice}"]`);
+          btn?.classList.add('active');
+        }else{
+          const scale = holder.querySelector(`.scale[data-id="${q._id}"]`);
+          const btn = scale?.querySelector(`.pill[data-v="${v}"]`);
+          btn?.classList.add('active');
+        }
+      });
+
+      progress();
+    }
+
+    // ====== 5) 계산 ======
+    function computeScores(){
+      const bank = getBank();
+      const bucket = {Interest:{R:0,I:0,A:0,S:0,E:0,C:0},Ability:{R:0,I:0,A:0,S:0,E:0,C:0},Preference:{R:0,I:0,A:0,S:0,E:0,C:0}};
+      bank.forEach(q=>{
+        const v = state.answers[q._id];
+        if(q.mode==='pair'){
+          if(v && v.type){ bucket.Preference[v.type] += 1; }
+        }else{
+          const num = typeof v==='number'? v: 0;
+          bucket[q.section][q.type] += num;
+        }
+      });
+      const weighted = {R:0,I:0,A:0,S:0,E:0,C:0};
+      Object.entries(bucket).forEach(([sec,types])=>{
+        const w = state.weights[sec]||1;
+        Object.entries(types).forEach(([t,val])=>{ weighted[t]+=val*w; });
+      });
+      return {bucket, weighted};
+    }
+
+    function buildTable(scores){
+      const {bucket, weighted} = scores;
+      const order = ['R','I','A','S','E','C'];
+      const head = `<tr><th>유형</th><th>흥미</th><th>능력</th><th>선호</th><th><b>합산</b></th></tr>`;
+      const rows = order.map(t=>`<tr><td><b>${t}</b></td><td>${bucket.Interest[t]}</td><td>${bucket.Ability[t]}</td><td>${bucket.Preference[t]}</td><td><b>${weighted[t]}</b></td></tr>`).join('');
+      document.getElementById('scoreTable').innerHTML = head+rows;
+    }
+
+    function buildChart(scores){
+      const ctx = document.getElementById('chart');
+      const order=['R','I','A','S','E','C'];
+      const data = order.map(k=>scores.weighted[k]);
+      if(window._chart){ window._chart.destroy(); }
+      window._chart = new Chart(ctx,{type:'bar',data:{labels:order,datasets:[{label:'합산 점수',data}]},options:{responsive:true,plugins:{legend:{display:false}}}});
+    }
+
+    function summarize(scores){
+      const pairs = Object.entries(scores.weighted).sort((a,b)=>b[1]-a[1]);
+      const top2 = pairs.slice(0,2).map(p=>p[0]).join(' + ');
+      const map = {R:'현장/실무형',I:'탐구/분석형',A:'창의/예술형',S:'사회/봉사형',E:'경영/설득형',C:'사무/관리형'};
+      const txt = `상위 유형: <b>${top2}</b><br>특징: ${pairs.slice(0,2).map(p=>map[p[0]]).join(', ')} 중심의 강점이 나타납니다.`;
+      const rule = state.sysPrompt?.trim();
+      const extra = rule? `<div class="hint small" style="margin-top:6px">규칙 반영 요약(간단): ${rule.slice(0,160)}...</div>`:'';
+      document.getElementById('summaryBox').innerHTML = txt + extra;
+    }
+
+    // ====== 6) 저장/불러오기 ======
+    function saveLocal(){
+      const snapshot = {state, answers: state.answers, _prepared: state._prepared};
+      localStorage.setItem('riasec_app', JSON.stringify(snapshot));
+    }
+
+    function loadLocal(){
+      const raw = localStorage.getItem('riasec_app');
+      if(!raw) return;
+      try{
+        const snap = JSON.parse(raw);
+        Object.assign(state, snap.state || {});
+        state.answers = snap.answers || {};
+        state._prepared = snap._prepared || {};
+      }catch(e){ console.warn(e); }
+    }
+
+    function exportJSON(){
+      const data = {
+        bankKey: state.bankKey,
+        createdAt: new Date().toISOString(),
+        answers: state.answers,
+        prepared: state._prepared,
+        weights: state.weights
+      };
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'riasec_result.json';
+      a.click();
+    }
+
+    function importJSON(file){
+      const reader = new FileReader();
+      reader.onload = e=>{
+        try{
+          const data = JSON.parse(e.target.result);
+          state.bankKey = data.bankKey || 'full';
+          state.answers = data.answers || {};
+          state._prepared = data.prepared || {};
+          state.weights = data.weights || state.weights;
+          document.getElementById('intro').classList.add('hidden');
+          document.getElementById('exam').classList.remove('hidden');
+          renderSection();
+        }catch(err){ alert('불러오기에 실패했습니다. JSON을 확인하세요.'); }
+      };
+      reader.readAsText(file);
+    }
+
+    // ====== 7) 이벤트 ======
+    document.getElementById('startBtn').addEventListener('click', ()=>{
+      state.bankKey = document.getElementById('bankSelect').value;
+      state.sysPrompt = document.getElementById('sysPrompt').value;
+      state.sectionIndex = 0;
+      state.answers = {}; state._prepared = {};
+      document.getElementById('intro').classList.add('hidden');
+      document.getElementById('exam').classList.remove('hidden');
+      renderSection();
+      saveLocal();
+    });
+
+    document.getElementById('nextBtn').addEventListener('click', ()=>{
+      if(state.sectionIndex < state.sections.length-1){
+        state.sectionIndex++;
+        renderSection();
+        saveLocal();
+      }else{
+        document.getElementById('exam').classList.add('hidden');
+        document.getElementById('result').classList.remove('hidden');
+        const scores = computeScores();
+        buildTable(scores); buildChart(scores); summarize(scores);
+      }
+    });
+
+    document.getElementById('prevBtn').addEventListener('click', ()=>{
+      if(state.sectionIndex>0){ state.sectionIndex--; renderSection(); saveLocal(); }
+    });
+
+    document.getElementById('retryBtn').addEventListener('click', ()=>{
+      localStorage.removeItem('riasec_app');
+      location.reload();
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', exportJSON);
+    document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+
+    document.getElementById('loadBtn').addEventListener('click', ()=> document.getElementById('fileInput').click());
+    document.getElementById('fileInput').addEventListener('change', (e)=>{
+      const f = e.target.files?.[0]; if(f) importJSON(f);
+    });
+
+    // 초기 로드
+    loadLocal();
+  </script>
+</body>
+</html>
